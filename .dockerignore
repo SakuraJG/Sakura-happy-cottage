@@ -1,0 +1,11 @@
+.git
+.idea
+.env
+.env.*
+config.yaml
+data/postgres
+data/uploads
+output
+tmp
+*.log
+server

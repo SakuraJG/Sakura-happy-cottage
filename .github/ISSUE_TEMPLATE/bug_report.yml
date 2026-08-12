@@ -1,0 +1,45 @@
+name: Bug 报告
+description: 报告可以稳定复现的错误或回归。
+title: "[Bug]: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: 安全漏洞请使用私有漏洞报告，不要在这里披露。
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 说明实际结果和预期结果。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 启动...
+        2. 打开...
+        3. 执行...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 提交 SHA、Tag 或镜像版本。
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境
+      description: 操作系统、浏览器、Go、Docker 和 PostgreSQL 版本。
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: 删除密码、Token、邮箱和其他个人信息后再粘贴。
+      render: shell

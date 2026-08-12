@@ -1,0 +1,28 @@
+# 复制为 config.yaml 后按部署环境调整。密码优先通过环境变量注入。
+server:
+  host: 0.0.0.0
+  port: 13888
+
+database:
+  host: host.docker.internal
+  port: 5432
+  name: postgres
+  user: postgres
+  password: ""
+  sslmode: disable
+
+storage:
+  upload_dir: /app/data/uploads
+  max_upload_bytes: 26214400
+
+auth:
+  cookie_name: sakura_home_session
+  cookie_secure: false
+  session_ttl_hours: 168
+  bcrypt_cost: 12
+  email_verify_ttl_hours: 24
+  password_reset_ttl_minutes: 30
+
+admin:
+  username: admin
+  password: ""

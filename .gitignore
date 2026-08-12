@@ -1,0 +1,11 @@
+data/postgres/
+data/uploads/
+output/
+tmp/
+*.log
+/server
+.idea/
+.env
+.env.*
+!.env.example
+config.yaml
