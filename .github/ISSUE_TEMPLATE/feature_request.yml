@@ -1,0 +1,24 @@
+name: 功能建议
+description: 提议一项范围明确的新功能。
+title: "[Feature]: "
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 描述用户场景和当前限制。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 描述期望行为，不必限定具体实现。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案与影响
+      description: 说明考虑过的替代方案、兼容性或安全影响。

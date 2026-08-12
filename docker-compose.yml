@@ -1,0 +1,19 @@
+name: sakura-happy-cottage
+
+services:
+  app:
+    build:
+      context: .
+      target: app
+    restart: unless-stopped
+    environment:
+      SAKURA_HOME_DATABASE_PASSWORD: ${SAKURA_HOME_DATABASE_PASSWORD:?set SAKURA_HOME_DATABASE_PASSWORD in .env}
+      SAKURA_HOME_ADMIN_USERNAME: ${SAKURA_HOME_ADMIN_USERNAME:-admin}
+      SAKURA_HOME_ADMIN_PASSWORD: ${SAKURA_HOME_ADMIN_PASSWORD:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "13888:13888"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data/uploads:/app/data/uploads
