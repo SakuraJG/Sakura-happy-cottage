@@ -7,6 +7,7 @@ import (
 	"html"
 	"mime"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"time"
@@ -25,10 +26,21 @@ func (a *App) sendPasswordResetEmail(settings SystemSettings, to, token string) 
 }
 
 func sendMail(settings SystemSettings, to, subject, body string) error {
+	fromAddress, err := parseMailAddress(settings.SMTPFromEmail)
+	if err != nil {
+		return fmt.Errorf("invalid SMTP from address: %w", err)
+	}
+	toAddress, err := parseMailAddress(to)
+	if err != nil {
+		return fmt.Errorf("invalid recipient address: %w", err)
+	}
+	if containsHeaderNewline(settings.SMTPFromName) || containsHeaderNewline(subject) {
+		return fmt.Errorf("mail header contains a newline")
+	}
+
 	address := net.JoinHostPort(settings.SMTPHost, fmt.Sprintf("%d", settings.SMTPPort))
 	serverName := settings.SMTPHost
 	var connection net.Conn
-	var err error
 	if settings.SMTPEncryption == "tls" {
 		connection, err = tls.Dial("tcp", address, &tls.Config{MinVersion: tls.VersionTLS12, ServerName: serverName})
 	} else {
@@ -58,10 +70,10 @@ func sendMail(settings SystemSettings, to, subject, body string) error {
 			return err
 		}
 	}
-	if err := client.Mail(settings.SMTPFromEmail); err != nil {
+	if err := client.Mail(fromAddress.Address); err != nil {
 		return err
 	}
-	if err := client.Rcpt(to); err != nil {
+	if err := client.Rcpt(toAddress.Address); err != nil {
 		return err
 	}
 	writer, err := client.Data()
@@ -70,11 +82,8 @@ func sendMail(settings SystemSettings, to, subject, body string) error {
 	}
 	buffer := bufio.NewWriter(writer)
 	fromName := strings.TrimSpace(settings.SMTPFromName)
-	from := settings.SMTPFromEmail
-	if fromName != "" {
-		from = fmt.Sprintf("%s <%s>", mime.QEncoding.Encode("UTF-8", fromName), settings.SMTPFromEmail)
-	}
-	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s", from, to, mime.QEncoding.Encode("UTF-8", subject), body)
+	fromAddress.Name = fromName
+	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s", fromAddress.String(), toAddress.String(), mime.QEncoding.Encode("UTF-8", subject), body)
 	if _, err := buffer.WriteString(message); err != nil {
 		return err
 	}
@@ -85,6 +94,22 @@ func sendMail(settings SystemSettings, to, subject, body string) error {
 		return err
 	}
 	return client.Quit()
+}
+
+func parseMailAddress(value string) (*mail.Address, error) {
+	value = strings.TrimSpace(value)
+	if containsHeaderNewline(value) {
+		return nil, fmt.Errorf("address contains a newline")
+	}
+	address, err := mail.ParseAddress(value)
+	if err != nil || address.Name != "" || address.Address != value {
+		return nil, fmt.Errorf("address must contain one plain mailbox")
+	}
+	return address, nil
+}
+
+func containsHeaderNewline(value string) bool {
+	return strings.ContainsAny(value, "\r\n")
 }
 
 func authLink(publicURL, parameter, token string) string {
