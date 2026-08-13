@@ -30,7 +30,7 @@
         </div>
 
         <form id="login-form" class="auth-form">
-          <label for="login-account">用户名或邮箱</label>
+          <label for="login-account">账户名或邮箱</label>
           <input id="login-account" autocomplete="username" required>
           <label for="login-password">密码</label>
           <input id="login-password" type="password" autocomplete="current-password" required>
@@ -41,8 +41,11 @@
         </form>
 
         <form id="register-form" class="auth-form" hidden>
+          <label for="register-account">账户名</label>
+          <input id="register-account" minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+" autocomplete="username" required>
+          <p class="field-hint">用于登录，创建后暂不支持修改</p>
           <label for="register-username">用户名</label>
-          <input id="register-username" minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+" autocomplete="username" required>
+          <input id="register-username" minlength="2" maxlength="32" autocomplete="nickname" required>
           <label for="register-password">密码</label>
           <input id="register-password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required>
           <label for="register-confirm">确认密码</label>
@@ -106,12 +109,30 @@
         </nav>
       </div>
       <div class="topbar-actions">
-        <span class="storage-state"><i></i> 本地存储</span>
         <button class="icon-button" id="refresh-button" type="button" title="刷新" aria-label="刷新">↻</button>
-        <button class="account-button" id="account-button" type="button" title="账户设置">
-          <span id="account-avatar" class="account-avatar">U</span>
-          <span id="account-name">账户</span>
-        </button>
+        <div class="account-menu">
+          <button class="account-button" id="account-button" type="button" title="我的个人空间">
+            <span id="account-avatar" class="account-avatar">U</span>
+            <span id="account-name">账户</span>
+          </button>
+          <div class="account-popover" role="menu" aria-label="账户快捷菜单">
+            <div class="account-popover-header">
+              <span id="menu-avatar" class="account-avatar large">U</span>
+              <div><strong id="menu-username">用户</strong><span id="menu-uid">UID --</span></div>
+            </div>
+            <div class="account-popover-stats">
+              <button id="menu-following-button" type="button" role="menuitem"><strong id="menu-following-count">0</strong><span>关注</span></button>
+              <button id="menu-friends-button" type="button" role="menuitem"><strong id="menu-friend-count">0</strong><span>好友</span></button>
+            </div>
+            <div class="account-popover-actions">
+              <button id="menu-profile-button" type="button" role="menuitem">个人空间</button>
+              <button id="menu-social-button" type="button" role="menuitem">好友与关注</button>
+              <button id="menu-settings-button" type="button" role="menuitem">账户与安全</button>
+            </div>
+            <div id="menu-admin-storage" class="account-admin-state" hidden><i></i><span>本地持久化存储</span><b>管理员可见</b></div>
+            <button class="account-popover-logout" id="menu-logout-button" type="button" role="menuitem">退出登录</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -207,6 +228,77 @@
       </section>
     </main>
 
+    <main id="people-page" class="workspace people-workspace" hidden>
+      <section class="page-heading people-heading">
+        <div>
+          <p class="eyebrow">关系</p>
+          <h1>好友与关注</h1>
+        </div>
+      </section>
+      <section class="people-tools" aria-label="搜索用户">
+        <form id="people-search-form" class="people-search-form">
+          <label class="search-box people-search-box">
+            <span aria-hidden="true">⌕</span>
+            <input id="people-search-input" type="search" maxlength="50" placeholder="输入 UID 或用户名" required>
+          </label>
+          <button class="primary-button" type="submit">搜索</button>
+        </form>
+      </section>
+      <section class="people-section">
+        <div class="social-tabs" role="tablist" aria-label="关系列表">
+          <button class="social-tab active" data-social-view="following" type="button" role="tab">我的关注 <b id="following-count">0</b></button>
+          <button class="social-tab" data-social-view="friends" type="button" role="tab">好友 <b id="friend-count">0</b></button>
+        </div>
+        <p id="people-result-label" class="people-result-label">我的关注</p>
+        <div id="people-loading" class="loading-state">正在读取…</div>
+        <div id="people-list" class="people-list" aria-live="polite"></div>
+        <div id="people-empty" class="empty-state" hidden>
+          <div class="empty-icon">○</div>
+          <h3>还没有关注</h3>
+          <p>通过 UID 或用户名找到其他用户。</p>
+        </div>
+      </section>
+    </main>
+
+    <main id="profile-page" class="workspace profile-workspace" hidden>
+      <button id="profile-back" class="back-button profile-back" type="button">← 返回</button>
+      <div id="profile-loading" class="loading-state">正在读取个人空间…</div>
+      <section id="profile-content" hidden>
+        <header class="profile-header">
+          <span id="profile-avatar" class="account-avatar profile-avatar">U</span>
+          <div class="profile-title">
+            <p id="profile-relation" class="eyebrow">个人空间</p>
+            <h1 id="profile-username">用户</h1>
+            <span id="profile-uid" class="uid-label">UID --</span>
+          </div>
+          <div id="profile-actions" class="profile-actions"></div>
+        </header>
+        <div class="profile-stats">
+          <div><strong id="profile-following-count">0</strong><span>关注</span></div>
+          <div><strong id="profile-follower-count">0</strong><span>关注者</span></div>
+          <div><strong id="profile-friend-count">0</strong><span>好友</span></div>
+        </div>
+        <section class="profile-section">
+          <div class="profile-section-heading"><h2>关于</h2><span id="profile-created-at"></span></div>
+          <p id="profile-bio" class="profile-bio">这个人还没有填写个人简介。</p>
+        </section>
+        <section id="own-profile-section" class="profile-section" hidden>
+          <div class="profile-section-heading"><div><h2>编辑个人信息</h2><p>用户名会展示给其他用户，账户名仅用于登录。</p></div></div>
+          <form id="profile-form" class="account-form profile-form">
+            <label for="profile-edit-username">用户名</label>
+            <input id="profile-edit-username" minlength="2" maxlength="32" required>
+            <label for="profile-edit-bio">个人简介</label>
+            <textarea id="profile-edit-bio" maxlength="160" rows="4" placeholder="简单介绍一下自己"></textarea>
+            <div class="profile-private-fields">
+              <div><span>账户名</span><strong id="profile-account">--</strong></div>
+              <div><span>绑定邮箱</span><strong id="profile-email">尚未绑定</strong></div>
+            </div>
+            <div class="account-form-action"><span>简介最多 160 个字符</span><button class="primary-button" type="submit">保存资料</button></div>
+          </form>
+        </section>
+      </section>
+    </main>
+
     <dialog id="edit-dialog" class="edit-dialog">
       <form id="edit-form" method="dialog">
         <div class="dialog-heading">
@@ -230,7 +322,7 @@
         <div class="dialog-heading account-heading">
           <div class="account-identity">
             <span id="dialog-avatar" class="account-avatar large">U</span>
-            <div><span>账户设置</span><h2 id="dialog-username">用户</h2></div>
+            <div><span>账户与安全</span><h2 id="dialog-username">用户</h2></div>
           </div>
           <button class="icon-button" id="close-account" type="button" aria-label="关闭" title="关闭">×</button>
         </div>
