@@ -11,6 +11,15 @@ database:
   password: ""
   sslmode: disable
 
+redis:
+  host: host.docker.internal
+  port: 6379
+  username: ""
+  password: ""
+  db: 0
+  tls: false
+  key_prefix: sakura-home
+
 storage:
   upload_dir: /app/data/uploads
   max_upload_bytes: 26214400

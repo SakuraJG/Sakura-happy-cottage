@@ -25,6 +25,15 @@ type Config struct {
 		Password string `yaml:"password"`
 		SSLMode  string `yaml:"sslmode"`
 	} `yaml:"database"`
+	Redis struct {
+		Host      string `yaml:"host"`
+		Port      int    `yaml:"port"`
+		Username  string `yaml:"username"`
+		Password  string `yaml:"password"`
+		DB        int    `yaml:"db"`
+		TLS       bool   `yaml:"tls"`
+		KeyPrefix string `yaml:"key_prefix"`
+	} `yaml:"redis"`
 	Storage struct {
 		UploadDir      string `yaml:"upload_dir"`
 		MaxUploadBytes int64  `yaml:"max_upload_bytes"`
@@ -67,6 +76,21 @@ func Load(path string) (Config, error) {
 	}
 	if cfg.Database.SSLMode == "" {
 		cfg.Database.SSLMode = "disable"
+	}
+	if cfg.Redis.Host == "" {
+		return Config{}, errors.New("redis.host is required")
+	}
+	if cfg.Redis.Port == 0 {
+		cfg.Redis.Port = 6379
+	}
+	if cfg.Redis.Port < 1 || cfg.Redis.Port > 65535 {
+		return Config{}, errors.New("redis.port must be between 1 and 65535")
+	}
+	if cfg.Redis.DB < 0 {
+		return Config{}, errors.New("redis.db must not be negative")
+	}
+	if cfg.Redis.KeyPrefix == "" {
+		cfg.Redis.KeyPrefix = "sakura-home"
 	}
 	if cfg.Storage.UploadDir == "" {
 		cfg.Storage.UploadDir = "./data/uploads"
@@ -115,6 +139,9 @@ func Load(path string) (Config, error) {
 func applyEnvironment(cfg *Config) {
 	if value, ok := os.LookupEnv("SAKURA_HOME_DATABASE_PASSWORD"); ok {
 		cfg.Database.Password = value
+	}
+	if value, ok := os.LookupEnv("SAKURA_HOME_REDIS_PASSWORD"); ok {
+		cfg.Redis.Password = value
 	}
 	if value, ok := os.LookupEnv("SAKURA_HOME_ADMIN_USERNAME"); ok {
 		cfg.Admin.Username = strings.TrimSpace(value)
