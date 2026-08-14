@@ -27,11 +27,14 @@ type contextKey string
 
 const identityContextKey contextKey = "identity"
 
-var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_]{3,32}$`)
+var accountPattern = regexp.MustCompile(`^[A-Za-z0-9_]{3,32}$`)
 
 type User struct {
 	ID                 int64     `json:"id"`
+	UID                int64     `json:"uid"`
+	Account            string    `json:"account"`
 	Username           string    `json:"username"`
+	Bio                string    `json:"bio"`
 	Role               string    `json:"role"`
 	MustChangePassword bool      `json:"must_change_password"`
 	Email              string    `json:"email,omitempty"`
@@ -82,11 +85,11 @@ func (a *App) requireAuth(next http.Handler) http.Handler {
 		hash := tokenHash(cookie.Value)
 		var identity sessionIdentity
 		err = a.db.QueryRow(r.Context(), `
-			SELECT u.id, u.username, u.role, u.must_change_password, COALESCE(u.email, ''), u.email_verified, u.created_at
+			SELECT u.id, u.id, u.username, u.display_name, u.bio, u.role, u.must_change_password, COALESCE(u.email, ''), u.email_verified, u.created_at
 			FROM sessions s
 			JOIN users u ON u.id = s.user_id
 			WHERE s.token_hash = $1 AND s.expires_at > NOW()`, hash,
-		).Scan(&identity.User.ID, &identity.User.Username, &identity.User.Role, &identity.User.MustChangePassword, &identity.User.Email, &identity.User.EmailVerified, &identity.User.CreatedAt)
+		).Scan(&identity.User.ID, &identity.User.UID, &identity.User.Account, &identity.User.Username, &identity.User.Bio, &identity.User.Role, &identity.User.MustChangePassword, &identity.User.Email, &identity.User.EmailVerified, &identity.User.CreatedAt)
 		if errors.Is(err, pgx.ErrNoRows) {
 			a.clearSessionCookie(w)
 			writeError(w, http.StatusUnauthorized, "登录已过期，请重新登录")
@@ -133,6 +136,7 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
+		Account  string `json:"account"`
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
@@ -140,9 +144,14 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	input.Account = strings.TrimSpace(input.Account)
 	input.Username = strings.TrimSpace(input.Username)
-	if !usernamePattern.MatchString(input.Username) {
-		writeError(w, http.StatusBadRequest, "用户名需为 3-32 位字母、数字或下划线")
+	if !accountPattern.MatchString(input.Account) {
+		writeError(w, http.StatusBadRequest, "账户名需为 3-32 位字母、数字或下划线")
+		return
+	}
+	if err := validateDisplayName(input.Username); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := validatePassword(input.Password); err != nil {
@@ -156,13 +165,13 @@ func (a *App) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	var user User
 	err = a.db.QueryRow(r.Context(), `
-		INSERT INTO users(username, password_hash)
-		VALUES($1, $2)
-		RETURNING id, username, role, must_change_password, COALESCE(email, ''), email_verified, created_at`,
-		input.Username, string(hash),
-	).Scan(&user.ID, &user.Username, &user.Role, &user.MustChangePassword, &user.Email, &user.EmailVerified, &user.CreatedAt)
+		INSERT INTO users(username, display_name, password_hash)
+		VALUES($1, $2, $3)
+		RETURNING id, id, username, display_name, bio, role, must_change_password, COALESCE(email, ''), email_verified, created_at`,
+		input.Account, input.Username, string(hash),
+	).Scan(&user.ID, &user.UID, &user.Account, &user.Username, &user.Bio, &user.Role, &user.MustChangePassword, &user.Email, &user.EmailVerified, &user.CreatedAt)
 	if uniqueViolation(err) {
-		writeError(w, http.StatusConflict, "用户名已存在")
+		writeError(w, http.StatusConflict, "账户名已存在")
 		return
 	}
 	if err != nil {
@@ -199,11 +208,11 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var user User
 	var passwordHash string
 	err := a.db.QueryRow(r.Context(), `
-		SELECT id, username, role, must_change_password, COALESCE(email, ''), email_verified, created_at, password_hash
+		SELECT id, id, username, display_name, bio, role, must_change_password, COALESCE(email, ''), email_verified, created_at, password_hash
 		FROM users
 		WHERE lower(username) = lower($1)
 		   OR (email_verified = TRUE AND lower(email) = lower($1))`, account,
-	).Scan(&user.ID, &user.Username, &user.Role, &user.MustChangePassword, &user.Email, &user.EmailVerified, &user.CreatedAt, &passwordHash)
+	).Scan(&user.ID, &user.UID, &user.Account, &user.Username, &user.Bio, &user.Role, &user.MustChangePassword, &user.Email, &user.EmailVerified, &user.CreatedAt, &passwordHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusUnauthorized, "账号或密码错误")
 		return
@@ -470,8 +479,8 @@ func (a *App) ensureBootstrapAdmin(ctx context.Context) error {
 			return hashErr
 		}
 		err = tx.QueryRow(ctx, `
-		INSERT INTO users(username, password_hash, role, must_change_password)
-		VALUES($1, $2, 'admin', TRUE)
+			INSERT INTO users(username, display_name, password_hash, role, must_change_password)
+			VALUES($1, $1, $2, 'admin', TRUE)
 		RETURNING id`, a.config.Admin.Username, string(hash)).Scan(&adminID)
 	} else if err == nil && role != "admin" {
 		return fmt.Errorf("bootstrap username %q belongs to a non-admin account; refusing automatic privilege escalation", a.config.Admin.Username)

@@ -12,6 +12,9 @@ const state = {
   emailConfirmationRequired: false,
   passwordRecoveryEnabled: false,
   resetToken: '',
+  socialView: 'following',
+  socialUsers: [],
+  profileUser: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -74,12 +77,25 @@ function wireAppEvents() {
   $('#edit-form').addEventListener('submit', saveEdit);
   $('#close-dialog').addEventListener('click', closeEditDialog);
   $('#cancel-edit').addEventListener('click', closeEditDialog);
-  $('#account-button').addEventListener('click', openAccountDialog);
+  $('#account-button').addEventListener('click', () => navigateTo(`/profile/${state.user.uid}`));
+  $('#menu-profile-button').addEventListener('click', () => navigateTo(`/profile/${state.user.uid}`));
+  $('#menu-social-button').addEventListener('click', () => navigateTo('/people'));
+  $('#menu-following-button').addEventListener('click', () => openSocialView('following'));
+  $('#menu-friends-button').addEventListener('click', () => openSocialView('friends'));
+  $('#menu-settings-button').addEventListener('click', openAccountDialog);
+  $('#menu-logout-button').addEventListener('click', logout);
   $('#close-account').addEventListener('click', () => $('#account-dialog').close());
   $('#logout-button').addEventListener('click', logout);
   $('#email-form').addEventListener('submit', bindEmail);
   $('#password-form').addEventListener('submit', changePassword);
   $('#system-settings-form').addEventListener('submit', saveSystemSettings);
+  $('#people-search-form').addEventListener('submit', searchUsers);
+  document.querySelectorAll('[data-social-view]').forEach((tab) => tab.addEventListener('click', () => selectSocialView(tab.dataset.socialView)));
+  $('#profile-form').addEventListener('submit', saveProfile);
+  $('#profile-back').addEventListener('click', () => {
+    if (window.history.length > 1) window.history.back();
+    else navigateTo('/people');
+  });
   document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('click', closeDialogFromBackdrop));
   document.addEventListener('keydown', (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !$('#memo-page').hidden && !$('#edit-dialog').open && !$('#account-dialog').open) {
@@ -94,16 +110,18 @@ function wireNavigation() {
     const route = link.dataset.route;
     if (!route || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    if (window.location.pathname !== route) window.history.pushState({}, '', route);
-    renderRoute();
+    navigateTo(route);
   }));
   window.addEventListener('popstate', renderRoute);
 }
 
 function renderRoute() {
-  const route = window.location.pathname === '/games' ? '/games' : '/';
+  const pathname = window.location.pathname;
+  const route = pathname === '/games' ? '/games' : (pathname === '/people' ? '/people' : (pathname.startsWith('/profile/') ? '/profile' : '/'));
   $('#memo-page').hidden = route !== '/';
   $('#games-page').hidden = route !== '/games';
+  $('#people-page').hidden = route !== '/people';
+  $('#profile-page').hidden = route !== '/profile';
   $('#refresh-button').hidden = route !== '/';
   document.querySelectorAll('.nav-link').forEach((link) => {
     const active = link.dataset.route === route;
@@ -111,7 +129,15 @@ function renderRoute() {
     if (active) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   });
-  document.title = route === '/games' ? '小游戏 · Sakura的快乐小屋' : 'Sakura的快乐小屋';
+  if (route === '/people') loadSocialList();
+  if (route === '/profile') loadProfile(pathname.slice('/profile/'.length));
+  const titles = { '/games': '小游戏', '/people': '好友与关注', '/profile': '个人空间' };
+  document.title = titles[route] ? `${titles[route]} · Sakura的快乐小屋` : 'Sakura的快乐小屋';
+}
+
+function navigateTo(route) {
+  if (window.location.pathname !== route) window.history.pushState({}, '', route);
+  renderRoute();
 }
 
 function closeDialogFromBackdrop(event) {
@@ -195,14 +221,18 @@ function enterApp(user) {
   renderUser();
   renderRoute();
   loadMemos();
+  refreshSocialCounts().catch(() => {});
 }
 
 function renderUser() {
   if (!state.user) return;
   const initial = [...state.user.username][0] || 'U';
   $('#account-avatar').textContent = initial;
+  $('#menu-avatar').textContent = initial;
   $('#dialog-avatar').textContent = initial;
   $('#account-name').textContent = state.user.username;
+  $('#menu-username').textContent = state.user.username;
+  $('#menu-uid').textContent = `UID ${state.user.uid}`;
   $('#dialog-username').textContent = state.user.username;
   const verified = state.user.email_verified;
   $('#email-status').textContent = verified ? state.user.email : '尚未绑定已确认邮箱';
@@ -210,6 +240,7 @@ function renderUser() {
   $('#email-badge').classList.toggle('verified', verified);
   $('#bind-email').value = state.user.email || '';
   const isAdmin = state.user.role === 'admin';
+  $('#menu-admin-storage').hidden = !isAdmin;
   $('#admin-section').hidden = !isAdmin;
   $('#admin-password-warning').hidden = !(isAdmin && state.user.must_change_password);
 }
@@ -247,7 +278,7 @@ async function register(event) {
   try {
     const { payload } = await requestJSON('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username: $('#register-username').value.trim(), password }),
+      body: JSON.stringify({ account: $('#register-account').value.trim(), username: $('#register-username').value.trim(), password }),
     });
     form.reset();
     enterApp(payload.user);
@@ -438,6 +469,203 @@ async function changePassword(event) {
     form.reset();
     state.user.must_change_password = false;
     renderUser();
+    showToast(payload.message);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    setBusy(button, false);
+  }
+}
+
+async function loadSocialList() {
+  const list = $('#people-list');
+  $('#people-loading').hidden = false;
+  list.innerHTML = '';
+  $('#people-empty').hidden = true;
+  try {
+    const [followingResponse, friendsResponse] = await Promise.all([
+      requestJSON('/api/social/following'),
+      requestJSON('/api/social/friends'),
+    ]);
+    const following = followingResponse.payload.users || [];
+    const friends = friendsResponse.payload.users || [];
+    setSocialCounts(following.length, friends.length);
+    state.socialUsers = state.socialView === 'friends' ? friends : following;
+    $('#people-result-label').textContent = state.socialView === 'friends' ? '好友' : '我的关注';
+    renderPeople();
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    $('#people-loading').hidden = true;
+  }
+}
+
+async function refreshSocialCounts() {
+  const [followingResponse, friendsResponse] = await Promise.all([
+    requestJSON('/api/social/following'),
+    requestJSON('/api/social/friends'),
+  ]);
+  const followingCount = (followingResponse.payload.users || []).length;
+  const friendCount = (friendsResponse.payload.users || []).length;
+  setSocialCounts(followingCount, friendCount);
+}
+
+function setSocialCounts(followingCount, friendCount) {
+  $('#following-count').textContent = followingCount;
+  $('#friend-count').textContent = friendCount;
+  $('#menu-following-count').textContent = followingCount;
+  $('#menu-friend-count').textContent = friendCount;
+}
+
+function openSocialView(view) {
+  state.socialView = view;
+  document.querySelectorAll('[data-social-view]').forEach((tab) => {
+    const active = tab.dataset.socialView === view;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+  });
+  $('#people-search-input').value = '';
+  navigateTo('/people');
+}
+
+function selectSocialView(view) {
+  state.socialView = view;
+  document.querySelectorAll('[data-social-view]').forEach((tab) => {
+    const active = tab.dataset.socialView === view;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+  });
+  $('#people-search-input').value = '';
+  loadSocialList();
+}
+
+async function searchUsers(event) {
+  event.preventDefault();
+  const query = $('#people-search-input').value.trim();
+  if (!query) return;
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  setBusy(button, true);
+  $('#people-loading').hidden = false;
+  try {
+    const { payload } = await requestJSON(`/api/users/search?q=${encodeURIComponent(query)}`);
+    state.socialUsers = payload.users || [];
+    $('#people-result-label').textContent = `“${query}”的搜索结果`;
+    renderPeople(true);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    setBusy(button, false);
+    $('#people-loading').hidden = true;
+  }
+}
+
+function renderPeople(isSearch = false) {
+  $('#people-list').innerHTML = state.socialUsers.map(personTemplate).join('');
+  const empty = $('#people-empty');
+  empty.hidden = state.socialUsers.length > 0;
+  empty.querySelector('h3').textContent = isSearch ? '没有找到用户' : (state.socialView === 'friends' ? '还没有好友' : '还没有关注');
+  empty.querySelector('p').textContent = isSearch ? '检查 UID 或换一个用户名试试。' : (state.socialView === 'friends' ? '双方互相关注后会自动成为好友。' : '通过 UID 或用户名找到其他用户。');
+  wirePersonActions();
+}
+
+function personTemplate(user) {
+  const initial = escapeHTML([...user.username][0] || 'U');
+  let relation = '';
+  if (user.is_self) relation = '<span class="relation-badge">自己</span>';
+  else if (user.friend) relation = '<span class="relation-badge friend">好友</span>';
+  else if (user.followed_by) relation = '<span class="relation-badge">关注了你</span>';
+  const action = user.is_self ? '' : `<button class="${user.following ? 'secondary-button' : 'primary-button'} compact-button" data-follow-uid="${user.uid}" data-following="${user.following}" type="button">${user.following ? '已关注' : '关注'}</button>`;
+  return `<article class="person-row"><button class="person-main" data-profile-uid="${user.uid}" type="button"><span class="account-avatar person-avatar">${initial}</span><span class="person-copy"><strong>${escapeHTML(user.username)}</strong><span>UID ${user.uid}${user.bio ? ` · ${escapeHTML(user.bio)}` : ''}</span></span>${relation}</button>${action}</article>`;
+}
+
+function wirePersonActions() {
+  document.querySelectorAll('[data-profile-uid]').forEach((button) => button.addEventListener('click', () => navigateTo(`/profile/${button.dataset.profileUid}`)));
+  document.querySelectorAll('[data-follow-uid]').forEach((button) => button.addEventListener('click', () => toggleFollow(button.dataset.followUid, button.dataset.following === 'true')));
+}
+
+async function loadProfile(uid) {
+  if (!/^\d+$/.test(uid)) {
+    navigateTo('/people');
+    return;
+  }
+  $('#profile-loading').hidden = false;
+  $('#profile-content').hidden = true;
+  try {
+    const { payload } = await requestJSON(`/api/users/${uid}`);
+    state.profileUser = payload.user;
+    renderProfile();
+    $('#profile-content').hidden = false;
+  } catch (error) {
+    showToast(error.message, true);
+    if (error.status === 404) navigateTo('/people');
+  } finally {
+    $('#profile-loading').hidden = true;
+  }
+}
+
+function renderProfile() {
+  const user = state.profileUser;
+  if (!user) return;
+  $('#profile-avatar').textContent = [...user.username][0] || 'U';
+  $('#profile-username').textContent = user.username;
+  $('#profile-uid').textContent = `UID ${user.uid}`;
+  $('#profile-following-count').textContent = user.following_count;
+  $('#profile-follower-count').textContent = user.follower_count;
+  $('#profile-friend-count').textContent = user.friend_count;
+  $('#profile-created-at').textContent = `${formatMonth(user.created_at)} 加入`;
+  $('#profile-bio').textContent = user.bio || '这个人还没有填写个人简介。';
+  $('#profile-relation').textContent = user.is_self ? '我的个人空间' : (user.friend ? '好友' : (user.followed_by ? '关注了你' : '个人空间'));
+  $('#own-profile-section').hidden = !user.is_self;
+  $('#profile-actions').innerHTML = user.is_self
+    ? '<div class="profile-action-group"><button class="secondary-button" data-open-people type="button">好友与关注</button><button class="secondary-button" data-open-settings type="button">账户与安全</button><button class="danger-button" data-profile-logout type="button">退出登录</button></div>'
+    : `<button class="${user.following ? 'secondary-button' : 'primary-button'}" data-profile-follow type="button">${user.following ? '已关注' : '关注'}</button>`;
+  if (user.is_self) {
+    setSocialCounts(user.following_count, user.friend_count);
+    $('#profile-edit-username').value = state.user.username;
+    $('#profile-edit-bio').value = state.user.bio || '';
+    $('#profile-account').textContent = state.user.account;
+    $('#profile-email').textContent = state.user.email_verified ? state.user.email : '尚未绑定';
+    $('[data-open-people]').addEventListener('click', () => navigateTo('/people'));
+    $('[data-open-settings]').addEventListener('click', openAccountDialog);
+    $('[data-profile-logout]').addEventListener('click', logout);
+  } else {
+    $('[data-profile-follow]').addEventListener('click', () => toggleFollow(user.uid, user.following, true));
+  }
+}
+
+async function toggleFollow(uid, following, onProfile = false) {
+  try {
+    const { payload } = await requestJSON(`/api/users/${uid}/follow`, { method: following ? 'DELETE' : 'POST' });
+    showToast(payload.message);
+    if (onProfile) {
+      state.profileUser = payload.user;
+      renderProfile();
+      await refreshSocialCounts();
+    } else if ($('#people-search-input').value.trim()) {
+      const index = state.socialUsers.findIndex((user) => user.uid === Number(uid));
+      if (index !== -1) state.socialUsers[index] = payload.user;
+      renderPeople(true);
+      await refreshSocialCounts();
+    } else {
+      loadSocialList();
+    }
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function saveProfile(event) {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  setBusy(button, true);
+  try {
+    const { payload } = await requestJSON('/api/account/profile', {
+      method: 'PATCH',
+      body: JSON.stringify({ username: $('#profile-edit-username').value.trim(), bio: $('#profile-edit-bio').value.trim() }),
+    });
+    state.user = payload.user;
+    renderUser();
+    await loadProfile(state.user.uid);
     showToast(payload.message);
   } catch (error) {
     showToast(error.message, true);
@@ -705,6 +933,10 @@ function findMemo(id) {
 
 function formatDateTime(value) {
   return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+}
+
+function formatMonth(value) {
+  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(new Date(value));
 }
 
 function formatBytes(bytes) {

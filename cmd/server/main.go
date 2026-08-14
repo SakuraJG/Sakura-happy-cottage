@@ -153,6 +153,10 @@ func (a *App) migrate(ctx context.Context) error {
 		);
 		ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
 		ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT '';
+		UPDATE users SET display_name = username WHERE display_name IS NULL OR btrim(display_name) = '';
+		ALTER TABLE users ALTER COLUMN display_name SET NOT NULL;
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users(lower(username));
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users(lower(email)) WHERE email IS NOT NULL;
 		CREATE TABLE IF NOT EXISTS sessions (
@@ -176,6 +180,14 @@ func (a *App) migrate(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 		CREATE INDEX IF NOT EXISTS idx_auth_tokens_user_purpose ON auth_tokens(user_id, purpose);
+		CREATE TABLE IF NOT EXISTS follows (
+			follower_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			followed_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (follower_id, followed_id),
+			CHECK (follower_id <> followed_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_follows_followed_id ON follows(followed_id);
 		CREATE TABLE IF NOT EXISTS system_settings (
 			singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
 			registration_enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -226,6 +238,8 @@ func (a *App) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", a.handleIndex)
 	mux.HandleFunc("GET /games", a.handleIndex)
+	mux.HandleFunc("GET /people", a.handleIndex)
+	mux.HandleFunc("GET /profile/", a.handleIndex)
 	mux.HandleFunc("GET /assets/", a.handleAsset)
 	mux.HandleFunc("GET /api/settings", a.handleSettings)
 	mux.HandleFunc("POST /api/auth/register", a.handleRegister)
@@ -237,6 +251,13 @@ func (a *App) routes() http.Handler {
 	mux.Handle("POST /api/auth/logout", a.requireAuth(http.HandlerFunc(a.handleLogout)))
 	mux.Handle("POST /api/account/password", a.requireAuth(http.HandlerFunc(a.handleChangePassword)))
 	mux.Handle("POST /api/account/email", a.requireAuth(http.HandlerFunc(a.handleBindEmail)))
+	mux.Handle("PATCH /api/account/profile", a.requireAuth(http.HandlerFunc(a.handleUpdateProfile)))
+	mux.Handle("GET /api/users/search", a.requireAuth(http.HandlerFunc(a.handleSearchUsers)))
+	mux.Handle("GET /api/users/{uid}", a.requireAuth(http.HandlerFunc(a.handleUserProfile)))
+	mux.Handle("POST /api/users/{uid}/follow", a.requireAuth(http.HandlerFunc(a.handleFollowUser)))
+	mux.Handle("DELETE /api/users/{uid}/follow", a.requireAuth(http.HandlerFunc(a.handleUnfollowUser)))
+	mux.Handle("GET /api/social/following", a.requireAuth(http.HandlerFunc(a.handleFollowing)))
+	mux.Handle("GET /api/social/friends", a.requireAuth(http.HandlerFunc(a.handleFriends)))
 	mux.Handle("GET /api/admin/system", a.requireAdmin(http.HandlerFunc(a.handleSystemInfo)))
 	mux.Handle("PUT /api/admin/system", a.requireAdmin(http.HandlerFunc(a.handleUpdateSystemSettings)))
 	mux.Handle("GET /api/memos", a.requireAuth(http.HandlerFunc(a.handleList)))
@@ -293,7 +314,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 }
 
 func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" && r.URL.Path != "/games" {
+	if r.URL.Path != "/" && r.URL.Path != "/games" && r.URL.Path != "/people" && !strings.HasPrefix(r.URL.Path, "/profile/") {
 		http.NotFound(w, r)
 		return
 	}
