@@ -1,11 +1,13 @@
 .git
+.gitignore
 .idea
 .env
 .env.*
 config.yaml
-data/postgres
-data/uploads
+data
 output
 tmp
+web/node_modules
+cmd/server/web/dist
 *.log
 server
