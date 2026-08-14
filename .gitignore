@@ -4,6 +4,8 @@ output/
 tmp/
 *.log
 /server
+web/node_modules/
+web/tsconfig.tsbuildinfo
 .idea/
 .env
 .env.*
