@@ -8,6 +8,7 @@ import { GamesPage } from '../features/games/GamesPage'
 import { MemoPage } from '../features/memos/MemoPage'
 import { PeoplePage } from '../features/social/PeoplePage'
 import { ProfilePage } from '../features/social/ProfilePage'
+import { WorkflowPage } from '../features/workflow/WorkflowPage'
 import { AppShell, type SocialView, type View } from './AppShell'
 
 export function App() {
@@ -65,10 +66,11 @@ export function App() {
   let contentKey = profileUID ? `profile-${profileUID}` : view
   if (profileUID) content = <ProfilePage uid={profileUID} user={user} onUser={setUser} onToast={notify} onBack={() => setProfileUID(null)} onSocial={openSocial} onAccount={() => navigate('account')} />
   else if (view === 'memos') content = <MemoPage onToast={notify} />
+  else if (view === 'workflow') content = <WorkflowPage onToast={notify} />
   else if (view === 'people') content = <PeoplePage initialTab={socialView} onToast={notify} onProfile={openProfile} />
   else if (view === 'profile') content = <ProfilePage uid={user.uid} user={user} onUser={setUser} onToast={notify} onBack={() => navigate('memos')} onSocial={openSocial} onAccount={() => navigate('account')} />
   else if (view === 'account') content = <div className="account-page"><section className="page-heading"><div><p className="overline">账户</p><h1>账户与安全</h1><p className="heading-note">管理登录方式、密码与小屋的系统配置。</p></div><ShieldCheck size={30} strokeWidth={1.4} /></section><AccountPanel user={user} onToast={notify} /></div>
-  else content = <GamesPage />
+  else content = <GamesPage user={user} onToast={notify} />
 
   return <>
     <AppShell user={user} view={view} contentKey={contentKey} setView={navigate} openSocial={openSocial} onLogout={logout}>{content}</AppShell>
