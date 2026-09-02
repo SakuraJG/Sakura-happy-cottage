@@ -32,6 +32,8 @@ type App struct {
 	started  time.Time
 	auth     *service.AuthService
 	memos    *service.MemoService
+	games    *service.GameService
+	rooms    *service.GameRoomManager
 	social   *service.SocialService
 	settings *repository.SettingsRepository
 	users    *repository.UserRepository
@@ -84,7 +86,7 @@ func main() {
 	}
 
 	auth := service.NewAuthService(users, repository.NewTokenRepository(db), settings, redisClient, cfg)
-	app := &App{cfg: cfg, db: db, redis: redisClient, started: time.Now(), auth: auth, memos: service.NewMemoService(repository.NewMemoRepository(db), cfg), social: service.NewSocialService(repository.NewSocialRepository(db)), settings: settings, users: users}
+	app := &App{cfg: cfg, db: db, redis: redisClient, started: time.Now(), auth: auth, memos: service.NewMemoService(repository.NewMemoRepository(db), cfg), games: service.NewGameService(repository.NewGameRepository(db)), rooms: service.NewGameRoomManager(cfg.Auth.BcryptCost), social: service.NewSocialService(repository.NewSocialRepository(db)), settings: settings, users: users}
 	server := &http.Server{Addr: fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port), Handler: app.routes(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 2 * time.Minute, WriteTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second}
 	log.Printf("Sakura的快乐小屋 listening on %s", server.Addr)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -115,6 +117,28 @@ func (a *App) routes() http.Handler {
 	mux.HandleFunc("PATCH /api/memos/{id}", a.withAuth(a.handleUpdateMemo))
 	mux.HandleFunc("DELETE /api/memos/{id}", a.withAuth(a.handleDeleteMemo))
 	mux.HandleFunc("GET /api/attachments/{id}", a.withAuth(a.handleAttachment))
+	mux.HandleFunc("GET /api/games/stats", a.withAuth(a.handleGameStats))
+	mux.HandleFunc("POST /api/games/matches", a.withAuth(a.handleRecordGameMatch))
+	mux.HandleFunc("GET /api/games/sessions/{code}", a.withAuth(a.handleGameSession))
+	mux.HandleFunc("POST /api/game-rooms", a.withAuth(a.handleCreateGameRoom))
+	mux.HandleFunc("POST /api/game-rooms/join", a.withAuth(a.handleJoinGameRoom))
+	mux.HandleFunc("GET /api/game-rooms/current", a.withAuth(a.handleCurrentGameRoom))
+	mux.HandleFunc("GET /api/game-rooms/{code}", a.withAuth(a.handleGetGameRoom))
+	mux.HandleFunc("DELETE /api/game-rooms/{code}", a.withAuth(a.handleLeaveGameRoom))
+	mux.HandleFunc("POST /api/game-rooms/{code}/invite", a.withAuth(a.handleInviteGameRoom))
+	mux.HandleFunc("POST /api/game-rooms/{code}/ready", a.withAuth(a.handleReadyGameRoom))
+	mux.HandleFunc("POST /api/game-rooms/{code}/practice", a.withAuth(a.handleAddPracticePlayer))
+	mux.HandleFunc("POST /api/game-rooms/{code}/start", a.withAuth(a.handleStartGameRoom))
+	mux.HandleFunc("POST /api/game-rooms/{code}/actions", a.withAuth(a.handleGameRoomAction))
+	mux.HandleFunc("POST /api/game-rooms/{code}/strokes", a.withAuth(a.handleGameRoomStroke))
+	mux.HandleFunc("POST /api/game-rooms/{code}/strokes/undo", a.withAuth(a.handleUndoGameRoomStroke))
+	mux.HandleFunc("DELETE /api/game-rooms/{code}/strokes", a.withAuth(a.handleClearGameRoomStrokes))
+	mux.HandleFunc("POST /api/game-rooms/{code}/drawing/finish", a.withAuth(a.handleLockGameRoomDrawing))
+	mux.HandleFunc("POST /api/game-rooms/{code}/messages", a.withAuth(a.handleGameRoomMessage))
+	mux.HandleFunc("POST /api/game-rooms/{code}/round/finish", a.withAuth(a.handleFinishGameRoomRound))
+	mux.HandleFunc("POST /api/game-rooms/{code}/round/next", a.withAuth(a.handleNextGameRoomRound))
+	mux.HandleFunc("GET /api/game-rooms/{code}/events", a.withAuth(a.handleGameRoomEvents))
+	mux.HandleFunc("GET /api/game-invitations", a.withAuth(a.handleGameInvitations))
 	mux.HandleFunc("GET /api/users/search", a.withAuth(a.handleSearchUsers))
 	mux.HandleFunc("GET /api/users/{uid}", a.withAuth(a.handleUserProfile))
 	mux.HandleFunc("POST /api/users/{uid}/follow", a.withAuth(a.handleFollow))

@@ -89,6 +89,49 @@ type Attachment struct {
 
 func (Attachment) TableName() string { return "attachments" }
 
+type GameMatch struct {
+	ID              int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID          int64     `gorm:"index:idx_game_matches_user_created" json:"-"`
+	GameKey         string    `json:"game_key"`
+	RoomCode        string    `json:"room_code"`
+	RoomName        string    `json:"room_name"`
+	RoundNumber     int       `json:"round_number"`
+	Word            string    `json:"word"`
+	Role            string    `json:"role"`
+	Result          string    `json:"result"`
+	DurationSeconds int       `json:"duration_seconds"`
+	Score           int       `json:"score"`
+	CreatedAt       time.Time `json:"played_at"`
+	User            User      `gorm:"constraint:OnDelete:CASCADE" json:"-"`
+}
+
+func (GameMatch) TableName() string { return "game_matches" }
+
+type GameStats struct {
+	TotalGames   int64                `json:"total_games"`
+	TotalSeconds int64                `json:"total_seconds"`
+	Wins         int64                `json:"wins"`
+	BestScore    int                  `json:"best_score"`
+	Recent       []GameSessionSummary `gorm:"-" json:"recent"`
+}
+
+type GameSessionSummary struct {
+	GameKey      string    `json:"game_key"`
+	RoomCode     string    `json:"room_code"`
+	RoomName     string    `json:"room_name"`
+	RoundsPlayed int64     `json:"rounds_played"`
+	TotalSeconds int64     `json:"total_seconds"`
+	Wins         int64     `json:"wins"`
+	TotalScore   int       `json:"total_score"`
+	StartedAt    time.Time `json:"started_at"`
+	EndedAt      time.Time `json:"ended_at"`
+}
+
+type GameSessionDetail struct {
+	Summary GameSessionSummary `json:"summary"`
+	Rounds  []GameMatch        `json:"rounds"`
+}
+
 type SocialUser struct {
 	UID            int64     `json:"uid"`
 	Username       string    `json:"username"`

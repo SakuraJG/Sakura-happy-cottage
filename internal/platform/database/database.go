@@ -119,12 +119,37 @@ func Migrate(db *gorm.DB) error {
 			size BIGINT NOT NULL DEFAULT 0,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS game_matches (
+			id BIGSERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			game_key TEXT NOT NULL CHECK (game_key IN ('drawing-guess', 'dou-dizhu', 'da-vinci-code')),
+			room_code TEXT NOT NULL DEFAULT '',
+			room_name TEXT NOT NULL DEFAULT '',
+			round_number INTEGER NOT NULL DEFAULT 1 CHECK (round_number BETWEEN 1 AND 100),
+			word TEXT NOT NULL DEFAULT '',
+			role TEXT NOT NULL CHECK (role IN ('drawer', 'guesser', 'landlord', 'farmer', 'codebreaker')),
+			result TEXT NOT NULL CHECK (result IN ('win', 'complete', 'lose')),
+			duration_seconds INTEGER NOT NULL CHECK (duration_seconds BETWEEN 1 AND 7200),
+			score INTEGER NOT NULL DEFAULT 0 CHECK (score BETWEEN 0 AND 100000),
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		"ALTER TABLE game_matches ADD COLUMN IF NOT EXISTS room_name TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE game_matches ADD COLUMN IF NOT EXISTS round_number INTEGER NOT NULL DEFAULT 1",
+		"ALTER TABLE game_matches ADD COLUMN IF NOT EXISTS word TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE game_matches DROP CONSTRAINT IF EXISTS game_matches_game_key_check",
+		"ALTER TABLE game_matches ADD CONSTRAINT game_matches_game_key_check CHECK (game_key IN ('drawing-guess', 'dou-dizhu', 'da-vinci-code'))",
+		"ALTER TABLE game_matches DROP CONSTRAINT IF EXISTS game_matches_role_check",
+		"ALTER TABLE game_matches ADD CONSTRAINT game_matches_role_check CHECK (role IN ('drawer', 'guesser', 'landlord', 'farmer', 'codebreaker'))",
+		"ALTER TABLE game_matches DROP CONSTRAINT IF EXISTS game_matches_result_check",
+		"ALTER TABLE game_matches ADD CONSTRAINT game_matches_result_check CHECK (result IN ('win', 'complete', 'lose'))",
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users(lower(username))",
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users(lower(email)) WHERE email IS NOT NULL",
 		"CREATE INDEX IF NOT EXISTS idx_auth_tokens_user_purpose ON auth_tokens(user_id, purpose)",
 		"CREATE INDEX IF NOT EXISTS idx_follows_followed_id ON follows(followed_id)",
 		"CREATE INDEX IF NOT EXISTS idx_memos_user_status_updated ON memos(user_id, status, updated_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_attachments_memo_id ON attachments(memo_id)",
+		"CREATE INDEX IF NOT EXISTS idx_game_matches_user_created ON game_matches(user_id, created_at DESC)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_game_matches_user_room_round ON game_matches(user_id, room_code, round_number) WHERE room_code <> ''",
 	}
 	return db.Transaction(func(tx *gorm.DB) error {
 		for _, statement := range statements {

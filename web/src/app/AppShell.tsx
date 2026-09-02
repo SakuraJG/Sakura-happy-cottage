@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Gamepad2, House, LogOut, Settings, UserRound, UsersRound } from 'lucide-react'
+import { GitBranch, Gamepad2, House, LogOut, Settings, UserRound, UsersRound } from 'lucide-react'
 import { request } from '../shared/api'
 import type { SocialUser, User } from '../shared/types'
 import { initial } from '../shared/format'
 
-export type View = 'memos' | 'games' | 'people' | 'profile' | 'account'
+export type View = 'memos' | 'workflow' | 'games' | 'people' | 'profile' | 'account'
 export type SocialView = 'following' | 'friends'
 
 export function AppShell({ user, view, contentKey, setView, openSocial, onLogout, children }: {
@@ -66,6 +66,7 @@ export function AppShell({ user, view, contentKey, setView, openSocial, onLogout
         </button>
         <nav aria-label="主要导航">
           <button className={view === 'memos' ? 'active' : ''} onClick={() => setView('memos')}>我的备忘录</button>
+          <button className={view === 'workflow' ? 'active' : ''} onClick={() => setView('workflow')}><GitBranch size={15} />我的工作流</button>
           <button className={view === 'games' ? 'active' : ''} onClick={() => setView('games')}><Gamepad2 size={15} />小游戏</button>
         </nav>
         <div className="profile-menu" ref={menuRef} onMouseEnter={openMenu} onMouseLeave={scheduleClose}>
